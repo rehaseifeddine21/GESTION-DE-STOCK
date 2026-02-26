@@ -4498,15 +4498,15 @@ class StockApp(MDApp):
             return 0.0
         if val <= 300:
             return 0.0
-        units = math.ceil(val / 100.0)
-        if val <= 30000:
-            duty = units * 1.0
-        elif val <= 100000:
-            duty = units * 1.5
+        duty = 0.0
+        if val <= 500000:
+            duty = val * 0.01
+        elif val <= 1000000:
+            duty = val * 0.015
         else:
-            duty = units * 2.0
-        final_duty = math.ceil(duty)
-        return float(max(5.0, final_duty))
+            duty = val * 0.02
+        final_duty = max(5.0, duty)
+        return round(final_duty, 2)
 
     def open_payment_dialog(self, x):
         current_time = time.time()
@@ -4700,8 +4700,6 @@ class StockApp(MDApp):
                     payment_method = self.payment_methods[self.current_method_index]['value']
                 except:
                     payment_method = ''
-        else:
-            payment_method = ''
         if self.current_mode == 'transfer':
             paid_amount = 0
         else:
@@ -4803,7 +4801,7 @@ class StockApp(MDApp):
             ent_name = str(self.selected_entity.get('name', '')).strip() if self.selected_entity else ''
             is_comptoir_entity = ent_name in server_default_names or not self.selected_entity or ent_name == ''
             timbre_amount = 0.0
-            method_val = method
+            method_val = method if method else ''
             if doc_type == 'FC' and is_comptoir_entity:
                 method_val = ''
                 timbre_amount = 0.0
@@ -4813,7 +4811,7 @@ class StockApp(MDApp):
                         method_val = self.payment_methods[self.current_method_index]['value']
                     except:
                         method_val = ''
-                if method_val in ['دفع نقدًا', 'Espèce']:
+                if method_val in ['دفع نقدًا', 'Espèce', 'Espèces']:
                     timbre_amount = self._calculate_stamp_duty(base_ttc)
             if not method_val:
                 method_val = ''
@@ -4886,42 +4884,10 @@ class StockApp(MDApp):
                 self.is_transaction_in_progress = False
                 if self.current_mode == 'transfer' and hasattr(req, 'result'):
                     pass
-                self.save_to_history(data, synced=False)
+                self.save_offline_and_ui(data)
                 if excess_data:
                     self.save_to_history(excess_data, synced=False)
                     self.update_local_entity_balance(excess_data['entity_id'], excess_data['amount'])
-                try:
-                    doc_type_local = data.get('doc_type', 'BV')
-                    if doc_type_local not in ['TR', 'FP', 'DP', 'BI'] and data.get('entity_id'):
-                        is_invoice_doc = doc_type_local in ['FC', 'FF']
-                        ht, tva = self.calculate_cart_totals(data.get('items', []), is_invoice_doc)
-                        total_amount_loc = self._round_num(ht + tva)
-                        if is_invoice_doc:
-                            p_info = data.get('payment_info', {})
-                            total_amount_loc = self._round_num(total_amount_loc + float(p_info.get('timbre', 0)))
-                        balance_sign = 1
-                        if doc_type_local in ['RC', 'RF']:
-                            balance_sign = -1
-                        payment_info_loc = data.get('payment_info', {})
-                        paid_amount_loc = float(payment_info_loc.get('amount', 0))
-                        net_change = self._round_num(total_amount_loc * balance_sign - paid_amount_loc)
-                        self.update_local_entity_balance(data['entity_id'], net_change)
-                except Exception as e:
-                    print(f'Error calculating offline balance update: {e}')
-                try:
-                    printable_modes = ['sale', 'purchase', 'return_sale', 'return_purchase', 'transfer']
-                    if self.current_mode in printable_modes:
-                        if self.store.exists('printer_config'):
-                            conf = self.store.get('printer_config')
-                            if conf.get('auto', False) and conf.get('mac', ''):
-                                threading.Thread(target=self.print_ticket_bluetooth, args=(data,), daemon=True).start()
-                except:
-                    pass
-                self.cart = []
-                self.selected_entity = None
-                self.selected_location = 'store'
-                self.update_cart_button()
-                self.go_back()
             if self.is_server_reachable:
 
                 def on_invoice_success(req, res):
